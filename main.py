@@ -16,17 +16,18 @@ def show_all_pictures(images):
     plt.show()
 
 if __name__ == '__main__':
-    net = Unet(in_channels=1, model_channels=96, out_channels=1, channel_mult=(1, 2, 2), attention_resolutions=[]).to('cuda')
-    net.load_state_dict(torch.load('./model/ddpm_weights.pth', map_location='cuda'))  # 加载权重
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    net = Unet(in_channels=1, model_channels=96, out_channels=1, channel_mult=(1, 2, 2), attention_resolutions=[]).to(device)
+    net.load_state_dict(torch.load('./model/ddpm_weights.pth', map_location=device))  # 加载权重
     net.eval()  # 切换到评估模式
 
     T = 1000
-    device = 'cuda'
+    
     beta = torch.linspace(0.0001, 0.02, T).to(device=device)
     alpha = 1-beta
     alpha_bar = torch.cumprod(alpha, dim=0).to(device=device)
-    x = torch.randn(1, 1, 28, 28).to('cuda')
-    timesteps = torch.tensor([T-1]).to('cuda')  # 选择最后一个时间步
+    x = torch.randn(1, 1, 28, 28).to(device)
+    timesteps = torch.tensor([T-1]).to(device)  # 选择最后一个时间步
     images = []  # 用于存储生成的图片
     with torch.no_grad():
         for t in range(T-1,-1,-1):

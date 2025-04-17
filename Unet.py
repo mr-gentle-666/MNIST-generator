@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 import torch.nn.functional as F
 # 时间嵌入
-def timestemp_embedding(timesteps,dim,max_period=1000):
+def timestep_embedding(timesteps,dim,max_period=1000):
     # 一半sin一半cos
     half = dim // 2
     # 计算每个周期的频率
@@ -146,9 +146,9 @@ class Unet(nn.Module):
     """
     def __init__(
         self,
-        in_channels=3,  # 输入通道数，默认为3（适用于RGB图像）
+        in_channels=1,  # 输入通道数，默认为3（适用于RGB图像）
         model_channels=128,  # 模型通道数，默认为128
-        out_channels=3,  # 输出通道数，默认为3（适用于RGB图像）
+        out_channels=1,  # 输出通道数，默认为3（适用于RGB图像）
         num_res_blocks=2,  # 残差块的数量，默认为2
         attention_resolutions=(8, 16),  # 注意力分辨率的元组，默认为(8, 16)
         dropout=0,  # Dropout概率，默认为0（不使用Dropout）
@@ -248,3 +248,55 @@ class Unet(nn.Module):
             nn.SiLU(),
             nn.Conv2d(model_channels, out_channels, kernel_size=3, padding=1),
         )
+    
+    def forward(self, x, timesteps):
+        """Apply the model to an input batch.
+
+        Args:
+            x (Tensor): [N x C x H x W]
+            timesteps (Tensor): a 1-D batch of timesteps.
+
+        Returns:
+            Tensor: [N x C x ...]
+        """
+        #记录每次下采样得到结果，用于后面上采样的copy and crop
+        hs = []
+        # 时间步嵌入
+        #利用timesteps参数，计算时间步的嵌入
+        #首先用timestep_embedding,将时间序列timesteps（1*n）转化为（n*model_channels）
+        #然后用time_embed将之前的n*model_channels转化为 n*time_embed_dim（也就是原来的mocel_channels*4）
+        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
+        #最终得到一个时间步嵌入的矩阵
+
+        # 下采样阶段
+        h = x
+        for module in self.down_blocks:
+        	#每次用时间步嵌入的矩阵信息emb，更新并记录每次的h
+            h = module(h, emb)
+            hs.append(h)
+        
+        # 中间阶段
+        h = self.middle_block(h, emb)
+        
+        # 上采样阶段
+        for module in self.up_blocks:
+            # 从 hs 中弹出一个张量
+            skip_connection = hs.pop()
+            
+            # 填充 h 的尺寸以匹配 skip_connection
+            if skip_connection.shape[2:] != h.shape[2:]:
+                diff_h = skip_connection.shape[2] - h.shape[2]
+                diff_w = skip_connection.shape[3] - h.shape[3]
+                h = F.pad(h, (0, diff_w, 0, diff_h))
+            
+            # 拼接并继续上采样
+            cat_in = torch.cat([h, skip_connection], dim=1)
+            h = module(cat_in, emb)
+        
+        return self.out(h)
+
+
+if __name__ == '__main__':
+    model = Unet(in_channels=3, model_channels=128, out_channels=3, num_res_blocks=2, attention_resolutions=(8, 16), dropout=0.1, channel_mult=(1, 2, 2, 2), conv_resample=True, num_heads=4)
+    print(model)
+    print(sum(p.numel() for p in model.parameters()))

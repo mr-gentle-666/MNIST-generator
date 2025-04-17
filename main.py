@@ -1,10 +1,18 @@
 import torch
 from Unet import Unet  # 确保导入了模型定义
 import matplotlib.pyplot as plt
-def show(image):
-    plt.figure(figsize=(1,1))
-    plt.imshow(image.squeeze().cpu().detach(), cmap='gray')
-    plt.axis('off')
+
+def show_all_pictures(images):
+    fig,axes = plt.subplots(2,5,figsize=(10,4))
+
+    for i in range(5):
+        ax = axes[0][i]
+        ax.imshow(images[i].squeeze().cpu().detach(), cmap='gray')
+        ax.axis('off')
+    for i in range(5):
+        ax = axes[1][i]
+        ax.imshow(images[i+5].squeeze().cpu().detach(), cmap='gray')
+        ax.axis('off')
     plt.show()
 
 if __name__ == '__main__':
@@ -13,12 +21,13 @@ if __name__ == '__main__':
     net.eval()  # 切换到评估模式
 
     T = 1000
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    beta = torch.linspace(0.0001, 0.02, T)
+    device = 'cuda'
+    beta = torch.linspace(0.0001, 0.02, T).to(device=device)
     alpha = 1-beta
     alpha_bar = torch.cumprod(alpha, dim=0).to(device=device)
     x = torch.randn(1, 1, 28, 28).to('cuda')
     timesteps = torch.tensor([T-1]).to('cuda')  # 选择最后一个时间步
+    images = []  # 用于存储生成的图片
     with torch.no_grad():
         for t in range(T-1,-1,-1):
             t_tensor = torch.tensor([t]).to(device)
@@ -32,4 +41,6 @@ if __name__ == '__main__':
                 x = mean + variance * noise
             else:
                 x = mean
-    show(x)
+            if t % 100 == 0:
+                images.append(x)
+    show_all_pictures(images)
